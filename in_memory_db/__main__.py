@@ -1,0 +1,16 @@
+from db import InMemoryDB
+
+db = InMemoryDB()
+print(db.set_at_with_ttl("A", "BC", "E", 1, 9))
+print(db.set_at("1", "23", "4", 1))
+print(db.set_at("1", "23", "5", 2))
+print(db.set_at("1", "23", "6", 4))
+db.backup(5)
+print(db.set_at("1", "23", "7", 8))
+db.backup(9)
+db.restore(10, 7)
+print(db.get_at("1", "23", 10))
+print(db.set_at_with_ttl("A", "BC", "E", 5, 11))
+print(db.set_at("A", "BD", "F", 12))
+print(db.scan_by_prefix_at("A", "B", 14))
+print(db.scan_by_prefix_at("A", "B", 15))
