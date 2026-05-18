@@ -1,13 +1,15 @@
 import copy
 from heapq import heappop, heappush, heapify
 
+NO_TTL = -1
+
 
 class Field:
     def __init__(self, key: str, field: str, value: str):
         self.key = key
         self.field = field
         self.value = value
-        self.ttl = -1
+        self.ttl = NO_TTL
 
     def set_ttl(self, ttl: int):
         self.ttl = ttl
@@ -89,7 +91,7 @@ class InMemoryDB:
         output = self._format_items(items=result)
         return output
 
-    def set_at(self, key: str, field: str, value: str, timestamp: int):
+    def set_at(self, key: str, field: str, value: str, timestamp: int) -> str:
         self._on_timestamp_event(timestamp=timestamp)
         return self.set(key=key, field=field, value=value)
 
@@ -111,6 +113,7 @@ class InMemoryDB:
         if delete_result == "false":
             return delete_result
         self._delete_ttl_field(key=key, field=field)
+        return delete_result
 
     def get_at(self, key: str, field: str, timestamp: int) -> str:
         self._on_timestamp_event(timestamp=timestamp)
@@ -121,36 +124,46 @@ class InMemoryDB:
         return self.scan_by_prefix(key=key, prefix=prefix)
 
     def backup(self, timestamp: int):
-        deep_copy_db = copy.deepcopy(self.db)
         self._on_timestamp_event(timestamp=timestamp)
+        deep_copy_db = copy.deepcopy(self.db)
         deep_copy_ttl_fields = copy.deepcopy(self.ttl_fields)
         new_backup = Backup(timestamp, deep_copy_db, deep_copy_ttl_fields)
         self.backups.append(new_backup)
         self.backups.sort(key=lambda x: x.backedup_on, reverse=True)
         return str(len(self.ttl_fields))
 
-    def restore(self, timestamp: int, timestampToRestore: int):
+    def restore(self, timestamp: int, timestampToRestore: int) -> str:
         backup_to_restore = None
         for backup in self.backups:
             if backup.backedup_on <= timestampToRestore:
                 backup_to_restore = backup
                 break
         if backup_to_restore is None:
-            return "false"
+            return ""
         self.db = copy.deepcopy(backup_to_restore.db)
         self.ttl_fields = copy.deepcopy(backup_to_restore.ttl_fields)
         self._on_timestamp_event(timestamp=timestamp)
-        return "true"
+        return ""
 
     def _on_timestamp_event(self, timestamp: int):
         if len(self.ttl_fields) == 0 or self.ttl_fields[0].ttl > timestamp:
             return
-        removed_field = heappop(self.ttl_fields)
-        self.delete(key=removed_field.key, field=removed_field.field)
+        deleted_keys: set[str] = set()
+        while len(self.ttl_fields) > 0 and self.ttl_fields[0].ttl <= timestamp:
+            removed_field = heappop(self.ttl_fields)
+            deleted_keys.add(f"{removed_field.key}:{removed_field.field}")
+        self._delete_ttl_field(field_list_to_delete_from=deleted_keys)
 
-    def _delete_ttl_field(self, key: str, field: str):
-        filtered = [x for x in self.ttl_fields if x.field != field and x.key != key]
-        self.ttl_fields[:] = filtered
+    def _delete_ttl_field(
+        self, key: str, field: str, field_list_to_delete_from: set[str] = None
+    ):
+        if field_list_to_delete_from is None:
+            field_list_to_delete_from = {f"{key}:{field}"}
+        self.ttl_fields = [
+            field
+            for field in self.ttl_fields
+            if f"{field.key}:{field.field}" not in field_list_to_delete_from
+        ]
         heapify(self.ttl_fields)
 
     def _format_items(self, items: list[Field]):
