@@ -52,5 +52,3 @@ class Worker:
 
     def get_total_working_hours(self) -> int:
         return self.total_working_hours
-
-    # def promote(self, )
